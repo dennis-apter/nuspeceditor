@@ -15,7 +15,6 @@ namespace PackageExplorerViewModel
         private const string ForceSaveAction = "ForceSave";
 #if NUSPEC_EDITOR
         private const string Package = "Package";
-        private static string _nuspecPath;
         private static string _nupkgPath;
 #else
         private const string SaveMetadataAction = "SaveMetadataAs";
@@ -68,7 +67,7 @@ namespace PackageExplorerViewModel
 
             if (action == SaveAction || action == ForceSaveAction)
             {
-                if (ValidPackagePath(_nuspecPath))
+                if (ValidPackagePath(ViewModel.NuspecPath))
                 {
                     Save();
                 }
@@ -99,8 +98,8 @@ namespace PackageExplorerViewModel
         {
             try
             {
-                ViewModel.ExportManifest(_nuspecPath, false);
-                ViewModel.OnSaved(_nuspecPath);
+                ViewModel.ExportManifest(ViewModel.NuspecPath, false);
+                ViewModel.OnSaved(ViewModel.NuspecPath);
             }
             catch (Exception ex)
             {
@@ -118,7 +117,7 @@ namespace PackageExplorerViewModel
             int filterIndex;
             //string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
 
-            if (!ViewModel.UIServices.OpenSaveFileDialog(title, packageName, Path.GetDirectoryName(_nuspecPath),
+            if (!ViewModel.UIServices.OpenSaveFileDialog(title, packageName, Path.GetDirectoryName(ViewModel.NuspecPath),
                 filter, /* overwritePrompt */ false, out selectedPath, out filterIndex))
             {
                 return;
@@ -134,7 +133,7 @@ namespace PackageExplorerViewModel
 
                 ViewModel.ExportManifest(selectedPath);
                 ViewModel.OnSaved(selectedPath);
-                _nuspecPath = selectedPath;
+                ViewModel.NuspecPath = selectedPath;
             }
             catch (Exception ex)
             {

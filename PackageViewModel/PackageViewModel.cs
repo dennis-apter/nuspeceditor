@@ -49,6 +49,9 @@ namespace PackageExplorerViewModel
         private RelayCommand<object> _openContentFileCommand;
         private ICommand _openWithContentFileCommand;
         private string _packageSource;
+#if NUSPEC_EDITOR
+        private string _nuspecPath;
+#endif
         private RelayCommand _publishCommand;
         private RelayCommand<object> _renameContentCommand;
         private ICommand _saveCommand;
@@ -101,7 +104,18 @@ namespace PackageExplorerViewModel
             _packageRules = packageRules;
 
             _packageMetadata = new EditablePackageMetadata(_package);
+#if NUSPEC_EDITOR
+            if (Path.GetExtension(source) == NuGet.Constants.ManifestExtension)
+            {
+                _nuspecPath = source;
+            }
+            else
+            {
+                PackageSource = source;
+            }
+#else
             PackageSource = source;
+#endif
 
             _packageRoot = PathToTreeConverter.Convert(_package.GetFiles().ToList(), this);
         }
@@ -237,6 +251,21 @@ namespace PackageExplorerViewModel
                 }
             }
         }
+
+#if NUSPEC_EDITOR
+        public string NuspecPath
+        {
+            get { return _nuspecPath; }
+            set
+            {
+                if (_nuspecPath != value)
+                {
+                    _nuspecPath = value;
+                    OnPropertyChanged("NuspecPaths");
+                }
+            }
+        }
+#endif
 
         public bool HasEdit
         {
