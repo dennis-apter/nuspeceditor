@@ -121,7 +121,7 @@
 
                 <MenuItem Visibility="{Binding SelectedItem, Converter={StaticResource PackagePartConverter}, ConverterParameter=file, FallbackValue=Collapsed}" Command="{Binding EditFileCommand}" CommandParameter="{Binding SelectedItem, FallbackValue={x:Null}}">
                     <MenuItem.Header>
-                        <TextBlock Text="{Binding SelectedItem.Name, Mode=OneWay, FallbackValue='', StringFormat='Edit \'{0}\'', Converter={StaticResource StringShortenerConverter}, ConverterParameter=35}" />
+                        <TextBlock Text="{Binding SelectedItem.Name, Mode=OneWay, FallbackValue='', StringFormat='Edit \'{0}\'',Converter={StaticResource StringShortenerConverter}, ConverterParameter=35}" />
                     </MenuItem.Header>
                 </MenuItem>
 

@@ -15,8 +15,8 @@ namespace PackageExplorerViewModel
         private const string ForceSaveAction = "ForceSave";
 #if NUSPEC_EDITOR
         private const string Package = "Package";
-        private string _nuspecPath;
-        private string _nupkgPath;
+        private static string _nuspecPath;
+        private static string _nupkgPath;
 #else
         private const string SaveMetadataAction = "SaveMetadataAs";
 #endif
@@ -68,7 +68,7 @@ namespace PackageExplorerViewModel
 
             if (action == SaveAction || action == ForceSaveAction)
             {
-                if (ValidPackagePath(ViewModel.PackageSource))
+                if (_nuspecPath != null && ValidPackagePath(_nuspecPath))
                 {
                     SaveAs();
                 }
@@ -87,11 +87,11 @@ namespace PackageExplorerViewModel
             }
         }
 
-        private static bool ValidPackagePath(string packageSource)
+        private static bool ValidPackagePath(string metadataPath)
         {
-            return !String.IsNullOrEmpty(packageSource) &&
-                   Path.IsPathRooted(packageSource) &&
-                   Path.GetExtension(packageSource).Equals(NuGet.Constants.PackageExtension,
+            return !String.IsNullOrEmpty(metadataPath) &&
+                   Path.IsPathRooted(metadataPath) &&
+                   Path.GetExtension(metadataPath).Equals(NuGet.Constants.ManifestExtension,
                                                            StringComparison.OrdinalIgnoreCase);
         }
 
@@ -128,8 +128,8 @@ namespace PackageExplorerViewModel
             const string filter = "NuGet manifest file (*.nuspec)|*.nuspec|All files (*.*)|*.*";
             string selectedPath;
             int filterIndex;
-            string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
-            if (ViewModel.UIServices.OpenSaveFileDialog(title, packageName, initialDirectory, filter, /* overwritePrompt */ false,
+            //string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
+            if (ViewModel.UIServices.OpenSaveFileDialog(title, packageName, _nuspecPath, filter, /* overwritePrompt */ false,
                                                         out selectedPath, out filterIndex))
             {
                 try
@@ -142,6 +142,7 @@ namespace PackageExplorerViewModel
 
                     ViewModel.ExportManifest(selectedPath);
                     ViewModel.OnSaved(selectedPath);
+                    _nuspecPath = Path.GetDirectoryName(selectedPath);
                 }
                 catch (Exception ex)
                 {
@@ -183,7 +184,7 @@ namespace PackageExplorerViewModel
                 if (succeeded)
                 {
                     ViewModel.PackageSource = selectedPackagePath;
-                    _nupkgPath = selectedPackagePath;
+                    _nupkgPath = Path.GetDirectoryName(selectedPackagePath);
                 }
             }
             RaiseCanExecuteChangedEvent();
