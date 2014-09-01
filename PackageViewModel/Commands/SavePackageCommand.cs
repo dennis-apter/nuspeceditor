@@ -68,9 +68,9 @@ namespace PackageExplorerViewModel
 
             if (action == SaveAction || action == ForceSaveAction)
             {
-                if (_nuspecPath != null && ValidPackagePath(_nuspecPath))
+                if (ValidPackagePath(_nuspecPath))
                 {
-                    SaveAs();
+                    Save();
                 }
                 else
                 {
@@ -95,30 +95,18 @@ namespace PackageExplorerViewModel
                                                            StringComparison.OrdinalIgnoreCase);
         }
 
-        //[SuppressMessage("Microsoft.Globalization", "CA1303:Do not pass literals as localized parameters", MessageId = "NuGetPackageExplorer.Types.IUIServices.Confirm(System.String,System.String,System.Boolean)")]
-        //private void Save()
-        //{
-        //    string expectedPackageName = ViewModel.PackageMetadata + NuGet.Constants.PackageExtension;
-        //    string packageName = Path.GetFileName(ViewModel.PackageSource);
-        //    if (!expectedPackageName.Equals(packageName, StringComparison.OrdinalIgnoreCase))
-        //    {
-        //        bool confirmed = ViewModel.UIServices.Confirm(
-        //            "File name mismatch",
-        //            "It looks like the package Id and version do not match this file name. Do you still want to save the package as '" + packageName + "'?",
-        //            true);
-
-        //        if (!confirmed)
-        //        {
-        //            return;
-        //        }
-        //    }
-
-        //    bool succeeded = SavePackage(ViewModel.PackageSource);
-        //    if (succeeded)
-        //    {
-        //        RaiseCanExecuteChangedEvent();
-        //    }
-        //}
+        private void Save()
+        {
+            try
+            {
+                ViewModel.ExportManifest(_nuspecPath, false);
+                ViewModel.OnSaved(_nuspecPath);
+            }
+            catch (Exception ex)
+            {
+                ViewModel.UIServices.Show(ex.Message, MessageLevel.Error);
+            }
+        }
 
         [SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
         private void SaveAs()
@@ -129,25 +117,28 @@ namespace PackageExplorerViewModel
             string selectedPath;
             int filterIndex;
             //string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
-            if (ViewModel.UIServices.OpenSaveFileDialog(title, packageName, _nuspecPath, filter, /* overwritePrompt */ false,
-                                                        out selectedPath, out filterIndex))
-            {
-                try
-                {
-                    if (filterIndex == 1 &&
-                        !selectedPath.EndsWith(NuGet.Constants.ManifestExtension, StringComparison.OrdinalIgnoreCase))
-                    {
-                        selectedPath += NuGet.Constants.ManifestExtension;
-                    }
 
-                    ViewModel.ExportManifest(selectedPath);
-                    ViewModel.OnSaved(selectedPath);
-                    _nuspecPath = Path.GetDirectoryName(selectedPath);
-                }
-                catch (Exception ex)
+            if (!ViewModel.UIServices.OpenSaveFileDialog(title, packageName, Path.GetDirectoryName(_nuspecPath),
+                filter, /* overwritePrompt */ false, out selectedPath, out filterIndex))
+            {
+                return;
+            }
+            
+            try
+            {
+                if (filterIndex == 1 &&
+                    !selectedPath.EndsWith(NuGet.Constants.ManifestExtension, StringComparison.OrdinalIgnoreCase))
                 {
-                    ViewModel.UIServices.Show(ex.Message, MessageLevel.Error);
+                    selectedPath += NuGet.Constants.ManifestExtension;
                 }
+
+                ViewModel.ExportManifest(selectedPath);
+                ViewModel.OnSaved(selectedPath);
+                _nuspecPath = selectedPath;
+            }
+            catch (Exception ex)
+            {
+                ViewModel.UIServices.Show(ex.Message, MessageLevel.Error);
             }
         }
 
