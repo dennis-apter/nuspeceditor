@@ -13,7 +13,13 @@ namespace PackageExplorerViewModel
         private const string SaveAction = "Save";
         private const string SaveAsAction = "SaveAs";
         private const string ForceSaveAction = "ForceSave";
+#if NUSPEC_EDITOR
+        private const string Package = "Package";
+        private string _nuspecPath;
+        private string _nupkgPath;
+#else
         private const string SaveMetadataAction = "SaveMetadataAs";
+#endif
 
         public SavePackageCommand(PackageViewModel model)
             : base(model)
@@ -26,8 +32,6 @@ namespace PackageExplorerViewModel
         }
 
         public event EventHandler CanExecuteChanged;
-
-       
 
 #if NUSPEC_EDITOR
         public void Execute(object parameter)
@@ -45,7 +49,7 @@ namespace PackageExplorerViewModel
             var action = parameter as string;
 
             // if the action is Save Metadata, we don't care if the package is valid
-            if (action != SaveMetadataAction)
+            if (action == Package)
             {
                 // validate the package to see if there is any error before actually creating the package.
                 PackageIssue firstIssue =
@@ -64,9 +68,9 @@ namespace PackageExplorerViewModel
 
             if (action == SaveAction || action == ForceSaveAction)
             {
-                if (CanSaveTo(ViewModel.PackageSource))
+                if (ValidPackagePath(ViewModel.PackageSource))
                 {
-                    Save();
+                    SaveAs();
                 }
                 else
                 {
@@ -77,13 +81,13 @@ namespace PackageExplorerViewModel
             {
                 SaveAs();
             }
-            else if (action == SaveMetadataAction)
+            else if (action == Package)
             {
-                SaveMetadataAs();
+                SavePackageAs();
             }
         }
 
-        private static bool CanSaveTo(string packageSource)
+        private static bool ValidPackagePath(string packageSource)
         {
             return !String.IsNullOrEmpty(packageSource) &&
                    Path.IsPathRooted(packageSource) &&
@@ -91,71 +95,33 @@ namespace PackageExplorerViewModel
                                                            StringComparison.OrdinalIgnoreCase);
         }
 
-        [SuppressMessage("Microsoft.Globalization", "CA1303:Do not pass literals as localized parameters", MessageId = "NuGetPackageExplorer.Types.IUIServices.Confirm(System.String,System.String,System.Boolean)")]
-        private void Save()
-        {
-            string expectedPackageName = ViewModel.PackageMetadata + NuGet.Constants.PackageExtension;
-            string packageName = Path.GetFileName(ViewModel.PackageSource);
-            if (!expectedPackageName.Equals(packageName, StringComparison.OrdinalIgnoreCase))
-            {
-                bool confirmed = ViewModel.UIServices.Confirm(
-                    "File name mismatch",
-                    "It looks like the package Id and version do not match this file name. Do you still want to save the package as '" + packageName + "'?",
-                    true);
+        //[SuppressMessage("Microsoft.Globalization", "CA1303:Do not pass literals as localized parameters", MessageId = "NuGetPackageExplorer.Types.IUIServices.Confirm(System.String,System.String,System.Boolean)")]
+        //private void Save()
+        //{
+        //    string expectedPackageName = ViewModel.PackageMetadata + NuGet.Constants.PackageExtension;
+        //    string packageName = Path.GetFileName(ViewModel.PackageSource);
+        //    if (!expectedPackageName.Equals(packageName, StringComparison.OrdinalIgnoreCase))
+        //    {
+        //        bool confirmed = ViewModel.UIServices.Confirm(
+        //            "File name mismatch",
+        //            "It looks like the package Id and version do not match this file name. Do you still want to save the package as '" + packageName + "'?",
+        //            true);
 
-                if (!confirmed)
-                {
-                    return;
-                }
-            }
+        //        if (!confirmed)
+        //        {
+        //            return;
+        //        }
+        //    }
 
-            bool succeeded = SavePackage(ViewModel.PackageSource);
-            if (succeeded)
-            {
-                RaiseCanExecuteChangedEvent();
-            }
-        }
-
-        private void SaveAs()
-        {
-            string packageName = ViewModel.PackageMetadata + NuGet.Constants.PackageExtension;
-            string title = "Save " + packageName;
-            const string filter = "NuGet package file (*.nupkg)|*.nupkg|All files (*.*)|*.*";
-            string selectedPackagePath;
-            int filterIndex;
-            string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
-            if (ViewModel.UIServices.OpenSaveFileDialog(title, packageName, initialDirectory, filter, /* overwritePrompt */ false,
-                                                        out selectedPackagePath, out filterIndex))
-            {
-                if (filterIndex == 1 &&
-                    !selectedPackagePath.EndsWith(NuGet.Constants.PackageExtension, StringComparison.OrdinalIgnoreCase))
-                {
-                    selectedPackagePath += NuGet.Constants.PackageExtension;
-                }
-
-                // prompt if the file already exists on disk
-                if (File.Exists(selectedPackagePath))
-                {
-                    bool confirmed = ViewModel.UIServices.Confirm(
-                        Resources.ConfirmToReplaceFile_Title,
-                        String.Format(CultureInfo.CurrentCulture, Resources.ConfirmToReplaceFile, selectedPackagePath));
-                    if (!confirmed)
-                    {
-                        return;
-                    }
-                }
-
-                bool succeeded = SavePackage(selectedPackagePath);
-                if (succeeded)
-                {
-                    ViewModel.PackageSource = selectedPackagePath;
-                }
-            }
-            RaiseCanExecuteChangedEvent();
-        }
+        //    bool succeeded = SavePackage(ViewModel.PackageSource);
+        //    if (succeeded)
+        //    {
+        //        RaiseCanExecuteChangedEvent();
+        //    }
+        //}
 
         [SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
-        private void SaveMetadataAs()
+        private void SaveAs()
         {
             string packageName = ViewModel.PackageMetadata + NuGet.Constants.ManifestExtension;
             string title = "Save " + packageName;
@@ -182,6 +148,45 @@ namespace PackageExplorerViewModel
                     ViewModel.UIServices.Show(ex.Message, MessageLevel.Error);
                 }
             }
+        }
+
+        private void SavePackageAs()
+        {
+            string packageName = ViewModel.PackageMetadata + NuGet.Constants.PackageExtension;
+            string title = "Save " + packageName;
+            const string filter = "NuGet package file (*.nupkg)|*.nupkg|All files (*.*)|*.*";
+            string selectedPackagePath;
+            int filterIndex;
+            //string initialDirectory = Path.IsPathRooted(ViewModel.PackageSource) ? ViewModel.PackageSource : null;
+            if (ViewModel.UIServices.OpenSaveFileDialog(title, packageName, _nupkgPath, filter, /* overwritePrompt */ false,
+                                                        out selectedPackagePath, out filterIndex))
+            {
+                if (filterIndex == 1 &&
+                    !selectedPackagePath.EndsWith(NuGet.Constants.PackageExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedPackagePath += NuGet.Constants.PackageExtension;
+                }
+
+                // prompt if the file already exists on disk
+                if (File.Exists(selectedPackagePath))
+                {
+                    bool confirmed = ViewModel.UIServices.Confirm(
+                        Resources.ConfirmToReplaceFile_Title,
+                        String.Format(CultureInfo.CurrentCulture, Resources.ConfirmToReplaceFile, selectedPackagePath));
+                    if (!confirmed)
+                    {
+                        return;
+                    }
+                }
+
+                bool succeeded = SavePackage(selectedPackagePath);
+                if (succeeded)
+                {
+                    ViewModel.PackageSource = selectedPackagePath;
+                    _nupkgPath = selectedPackagePath;
+                }
+            }
+            RaiseCanExecuteChangedEvent();
         }
 
         [SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
