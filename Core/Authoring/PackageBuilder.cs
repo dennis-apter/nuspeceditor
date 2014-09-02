@@ -164,7 +164,11 @@ namespace NuGet
                 package.PackageProperties.Language = Language;
                 package.PackageProperties.Keywords = ((IPackageMetadata) this).Tags;
                 package.PackageProperties.Title = Title;
+#if NUSPEC_EDITOR
                 package.PackageProperties.Subject = "NuGet Package Explorer";
+#else
+                package.PackageProperties.Subject = "NuGet Package Explorer";
+#endif
             }
         }
 

@@ -65,24 +65,30 @@ namespace PackageExplorerViewModel
                 }
             }
 
-            if (action == SaveAction || action == ForceSaveAction)
+            switch (action)
             {
-                if (ValidPackagePath(ViewModel.NuspecPath))
-                {
-                    Save();
-                }
-                else
-                {
+                case ForceSaveAction:
+                case SaveAction:
+                    TrySave();
+                    break;
+                case SaveAsAction:
                     SaveAs();
-                }
+                    break;
+                case Package:
+                    SavePackageAs();
+                    break;
             }
-            else if (action == SaveAsAction)
+        }
+
+        private void TrySave()
+        {
+            if (ValidPackagePath(ViewModel.NuspecPath))
+            {
+                Save();
+            }
+            else
             {
                 SaveAs();
-            }
-            else if (action == Package)
-            {
-                SavePackageAs();
             }
         }
 
@@ -94,6 +100,7 @@ namespace PackageExplorerViewModel
                                                            StringComparison.OrdinalIgnoreCase);
         }
 
+        [SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
         private void Save()
         {
             try

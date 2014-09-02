@@ -10,29 +10,32 @@ namespace PackageExplorer
     /// <summary>
     /// Interaction logic for AboutWindow.xaml
     /// </summary>
-    public partial class AboutWindow : StandardDialog
+    public partial class AboutWindow
     {
         public AboutWindow()
         {
             InitializeComponent();
 
+#if NUSPEC_EDITOR
+            ProductTitle.Text = String.Format(
+                CultureInfo.CurrentCulture,
+                "{0} ({1})",
+                "NuSpec Editor",
+                GetApplicationVersion());
+#else
             ProductTitle.Text = String.Format(
                 CultureInfo.CurrentCulture,
                 "{0} ({1})",
                 StringResources.Dialog_Title,
                 GetApplicationVersion());
+#endif
         }
 
         private static Version GetApplicationVersion()
         {
-            if (ApplicationDeployment.IsNetworkDeployed)
-            {
-                return ApplicationDeployment.CurrentDeployment.CurrentVersion;
-            }
-            else
-            {
-                return typeof(MainWindow).Assembly.GetName().Version;
-            }
+            return ApplicationDeployment.IsNetworkDeployed ? 
+                ApplicationDeployment.CurrentDeployment.CurrentVersion : 
+                typeof(MainWindow).Assembly.GetName().Version;
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)

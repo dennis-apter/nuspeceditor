@@ -2,8 +2,11 @@
 {
     public static class Constants
     {
+#if NUSPEC_EDITOR
+        public const string UserAgentClient = "NuSpec Editor";
+#else
         public const string UserAgentClient = "NuGet Package Explorer";
-
+#endif
         internal const string ContentForInit = "param($installPath, $toolsPath, $package)";
         internal const string ContentForInstall = "param($installPath, $toolsPath, $package, $project)";
 

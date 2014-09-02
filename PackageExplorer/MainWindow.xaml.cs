@@ -38,6 +38,11 @@ namespace PackageExplorer
 
             RecentFilesMenuItem.DataContext = _mruManager = mruManager;
             RecentFilesContainer.Collection = _mruManager.Files;
+
+#if NUSPEC_EDITOR
+            Title = "NuSpec Editor";
+#endif
+
         }
 
         [Import]
