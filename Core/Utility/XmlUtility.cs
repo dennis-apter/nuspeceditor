@@ -1,11 +1,13 @@
 using System;
 using System.IO;
 using System.Xml.Linq;
+using System.Diagnostics.CodeAnalysis;
 
 namespace NuGet
 {
     internal static class XmlUtility
     {
+        [SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
         internal static XDocument GetOrCreateDocument(XName rootName, IFileSystem fileSystem, string path)
         {
             if (fileSystem.FileExists(path))
