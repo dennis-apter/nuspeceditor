@@ -21,7 +21,7 @@ namespace PackageExplorer
             if (isValid)
             {
                 var viewModel = (PublishPackageViewModel) DataContext;
-                viewModel.PushPackage();
+                viewModel.PushPackage().Wait();
             }
         }
     }
