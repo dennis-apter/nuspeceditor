@@ -52,6 +52,19 @@ namespace NuGet
             }
         }
 
+        public bool IsTemplate
+        {
+            get
+            {
+                return Placeholders.Id.Equals(Metadata.Id, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Version.Equals(Metadata.Version, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Title.Equals(Metadata.Title, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Author.Equals(Metadata.Authors, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Author.Equals(Metadata.Owners, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Description.Equals(Metadata.Description, StringComparison.InvariantCultureIgnoreCase);
+            }
+        }
+
         public void Save(Stream stream)
         {
             Save(stream, validate: true, minimumManifestVersion: 1);
@@ -139,7 +152,7 @@ namespace NuGet
 
         public static Manifest Create(IPackageMetadata metadata)
         {
-            return new Manifest
+            var manifest = new Manifest
                    {
                        Metadata = new ManifestMetadata
                                   {
@@ -178,6 +191,50 @@ namespace NuGet
                                       MinClientVersionString = metadata.MinClientVersion.ToStringSafe()
                                   }
                    };
+
+            if (metadata.TemplateValues != null)
+            {
+                string templatedValue;
+
+                if (metadata.TemplateValues.TryGetValue(Placeholders.Id, out templatedValue) && 
+                    manifest.Metadata.Id == templatedValue)
+                {
+                    manifest.Metadata.Id = Placeholders.Id;
+                }
+
+                if (metadata.TemplateValues.TryGetValue(Placeholders.Version, out templatedValue) && 
+                    manifest.Metadata.Version == templatedValue)
+                {
+                    manifest.Metadata.Version = Placeholders.Version;
+                }
+
+                if (metadata.TemplateValues.TryGetValue(Placeholders.Title, out templatedValue) && 
+                    manifest.Metadata.Version == templatedValue)
+                {
+                    manifest.Metadata.Title = Placeholders.Title;
+                }
+
+                if (metadata.TemplateValues.TryGetValue(Placeholders.Author, out templatedValue))
+                {
+                    if (manifest.Metadata.Authors == templatedValue)
+                    {
+                        manifest.Metadata.Authors = Placeholders.Author;
+                    }
+
+                    if (manifest.Metadata.Owners == templatedValue)
+                    {
+                        manifest.Metadata.Owners = Placeholders.Author;
+                    }
+                }
+
+                if (metadata.TemplateValues.TryGetValue(Placeholders.Description, out templatedValue) && 
+                    manifest.Metadata.Description == templatedValue)
+                {
+                    manifest.Metadata.Description = Placeholders.Description;
+                }
+            }
+
+            return manifest;
         }
 
         private static List<ManifestDependencySet> CreateDependencySet(IPackageMetadata metadata)

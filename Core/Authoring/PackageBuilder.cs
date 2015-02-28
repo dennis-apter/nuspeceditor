@@ -6,6 +6,8 @@ using System.Globalization;
 using System.IO;
 using System.IO.Packaging;
 using System.Linq;
+using System.Reflection;
+using Mono.Cecil;
 using NuGet.Resources;
 
 namespace NuGet
@@ -89,16 +91,22 @@ namespace NuGet
             private set;
         }
 
-        public Collection<IPackageFile> Files 
-        { 
-            get; 
-            private set; 
+        public Collection<IPackageFile> Files
+        {
+            get;
+            private set;
         }
 
         public Version MinClientVersion
         {
             get;
             set;
+        }
+
+        public IDictionary<string,string> TemplateValues
+        {
+            get;
+            private set;
         }
 
         IEnumerable<string> IPackageMetadata.Authors
@@ -162,7 +170,7 @@ namespace NuGet
                 package.PackageProperties.Identifier = Id;
                 package.PackageProperties.Version = Version.ToString();
                 package.PackageProperties.Language = Language;
-                package.PackageProperties.Keywords = ((IPackageMetadata) this).Tags;
+                package.PackageProperties.Keywords = ((IPackageMetadata)this).Tags;
                 package.PackageProperties.Title = Title;
 #if NUSPEC_EDITOR
                 package.PackageProperties.Subject = "NuGet Package Explorer";
@@ -274,6 +282,16 @@ namespace NuGet
         {
             // Deserialize the document and extract the metadata
             Manifest manifest = Manifest.ReadFrom(stream);
+
+            bool filesAdded = false;
+            if (manifest.IsTemplate)
+            {
+                AddFiles(manifest, basePath);
+                filesAdded = true;
+
+                FillMetadataTemplate(manifest.Metadata);
+            }
+
             IPackageMetadata metadata = manifest.Metadata;
 
             Id = metadata.Id;
@@ -305,19 +323,302 @@ namespace NuGet
                 PackageAssemblyReferences.AddRange(metadata.PackageAssemblyReferences);
             }
 
-            // If there's no base path then ignore the files node
-            if (basePath != null)
+            if (!filesAdded)
             {
-                if (manifest.Files == null)
+                AddFiles(manifest, basePath);
+            }
+        }
+
+        private void FillMetadataTemplate(ManifestMetadata metadata)
+        {
+            var values = new Dictionary<string, string>();
+            if (Placeholders.Id.Equals(metadata.Id, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Id, null);
+
+            if (Placeholders.Version.Equals(metadata.Version, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Version, null);
+
+            if (Placeholders.Title.Equals(metadata.Title, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Title, null);
+
+            if (Placeholders.Author.Equals(metadata.Authors, StringComparison.InvariantCultureIgnoreCase) ||
+                Placeholders.Author.Equals(metadata.Owners, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Author, null);
+
+            if (Placeholders.Description.Equals(metadata.Description, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Description, null);
+
+            bool resolved = false;
+            foreach (var file in Files)
+            {
+                if (!file.Path.StartsWith("lib") ||
+                    !".dll".Equals(Path.GetExtension(file.Path), StringComparison.InvariantCultureIgnoreCase))
+                    continue;
+
+                var assemblyDefinition = AssemblyDefinition.ReadAssembly(file.OriginalPath);
+
+                TryResolveAssemblyId(values, file);
+                TryResolveAssemblyVersion(values, assemblyDefinition, file);
+                TryResolveAssemblyTitle(values, assemblyDefinition, file);
+                TryResolveAssemblyAuthor(values, assemblyDefinition, file);
+                TryResolveAssemblyDescription(values, assemblyDefinition, file);
+
+                resolved = true;
+            }
+            
+            var unresolvedPlaceholders = values.Where(p => p.Value == null).Select(p => p.Key).ToList();
+            if (!resolved || unresolvedPlaceholders.Count > 0)
+            {
+                throw new ArgumentException(string.Format("Can't resolve template values ({0})", string.Join(", ", unresolvedPlaceholders)));
+            }
+
+            foreach (var placeholder in values)
+            {
+                switch (placeholder.Key)
                 {
-                    AddFiles(basePath, @"**\*.*", null);
+                    case Placeholders.Id:
+                        metadata.Id = placeholder.Value; 
+                        break;
+                    case Placeholders.Version:
+                        metadata.Version = placeholder.Value;
+                        break;
+                    case Placeholders.Title:
+                        metadata.Title = placeholder.Value;
+                        break;
+                    case Placeholders.Author:
+                        if (Placeholders.Author.Equals(metadata.Authors, StringComparison.InvariantCultureIgnoreCase))
+                            metadata.Authors = placeholder.Value;
+                        if (Placeholders.Author.Equals(metadata.Owners, StringComparison.InvariantCultureIgnoreCase))
+                            metadata.Owners = placeholder.Value;
+                        break;
+                    case Placeholders.Description:
+                        metadata.Description = placeholder.Value;
+                        break;
+                }
+            }
+
+            if ("http://LICENSE_URL_HERE_OR_DELETE_THIS_LINE" == metadata.LicenseUrl)
+            {
+                metadata.LicenseUrl = null;
+            }
+
+            if ("http://PROJECT_URL_HERE_OR_DELETE_THIS_LINE" == metadata.ProjectUrl)
+            {
+                metadata.ProjectUrl = null;
+            }
+
+            if ("http://ICON_URL_HERE_OR_DELETE_THIS_LINE" == metadata.IconUrl)
+            {
+                metadata.IconUrl = null;
+            }
+
+            if ("Summary of changes made in this release of the package." == metadata.ReleaseNotes)
+            {
+                metadata.ReleaseNotes = null;
+            }
+
+            if ("Tag1 Tag2" == metadata.Tags)
+            {
+                metadata.Tags = null;
+            }
+
+            TemplateValues = new ReadOnlyDictionary<string,string>(values);
+        }
+
+        private static void TryResolveAssemblyId(Dictionary<string, string> values, IPackageFile file)
+        {
+            string id;
+            if (values.TryGetValue(Placeholders.Id, out id))
+            {
+                var resolvedId = Path.GetFileNameWithoutExtension(file.Path);
+                if (id == null)
+                {
+                    values[Placeholders.Id] = resolvedId;
+                }
+                else if (resolvedId != id)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different name '{1}', but expected '{2}'.",
+                            file.Path, resolvedId, id));
+                }
+            }
+        }
+
+        private static void TryResolveAssemblyVersion(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        {
+            string version;
+            if (values.TryGetValue(Placeholders.Version, out version))
+            {
+                var resolvedVersion = ResolveAssemblyVersion(assemblyDefinition);
+                if (version == null)
+                {
+                    values[Placeholders.Version] = resolvedVersion;
+                }
+                else if (resolvedVersion != version)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different version '{1}', but expected '{2}'.",
+                            file.Path, resolvedVersion, version));
+                }
+            }
+        }
+
+        private static void TryResolveAssemblyTitle(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        {
+            string title;
+            if (values.TryGetValue(Placeholders.Title, out title))
+            {
+                var resolvedTitle = ResolveAssemblyTitle(assemblyDefinition);
+                if (title == null)
+                {
+                    values[Placeholders.Title] = resolvedTitle;
+                }
+                else if (resolvedTitle != title)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different title '{1}', but expected '{2}'.",
+                            file.Path, resolvedTitle, title));
+                }
+            }
+        }
+
+        private static void TryResolveAssemblyAuthor(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        {
+            string author;
+            if (values.TryGetValue(Placeholders.Author, out author))
+            {
+                var resolvedAuthor = ResolveAssemblyAuthor(assemblyDefinition);
+                if (author == null)
+                {
+                    values[Placeholders.Author] = resolvedAuthor;
+                }
+                else if (resolvedAuthor != author)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different author '{1}', but expected '{2}'.",
+                            file.Path, resolvedAuthor, author));
+                }
+            }
+        }
+
+        private static void TryResolveAssemblyDescription(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        {
+            string description;
+            if (values.TryGetValue(Placeholders.Description, out description))
+            {
+                var resolvedDescription = ResolveAssemblyDescription(assemblyDefinition);
+                if (description == null)
+                {
+                    values[Placeholders.Description] = resolvedDescription;
+                }
+                else if (resolvedDescription != description)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different description '{1}', but expected '{2}'.",
+                            file.Path, resolvedDescription, description));
+                }
+            }
+        }
+
+        private static string ResolveAssemblyVersion(AssemblyDefinition assemblyDefinition)
+        {
+            string result = null;
+            var aiva = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(AssemblyInformationalVersionAttribute).Name);
+            if (aiva != null)
+            {
+                result = Convert.ToString(aiva.ConstructorArguments[0].Value);
+            }
+            else
+            {
+                var ava = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                    a => a.AttributeType.Name == typeof(AssemblyVersionAttribute).Name);
+                if (ava != null)
+                {
+                    result = Convert.ToString(ava.ConstructorArguments[0].Value);
                 }
                 else
                 {
-                    foreach (ManifestFile file in manifest.Files)
+                    var afva = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                        a => a.AttributeType.Name == typeof(AssemblyFileVersionAttribute).Name);
+                    if (afva != null)
                     {
-                        AddFiles(basePath, file.Source, file.Target, file.Exclude);
+                        result = Convert.ToString(afva.ConstructorArguments[0].Value);
                     }
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+
+        private static string ResolveAssemblyTitle(AssemblyDefinition assemblyDefinition)
+        {
+            string result = null;
+            var ata = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(AssemblyTitleAttribute).Name);
+            if (ata != null)
+            {
+                result = Convert.ToString(ata.ConstructorArguments[0].Value);
+            }
+            else
+            {
+                var apa = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                    a => a.AttributeType.Name == typeof(AssemblyProductAttribute).Name);
+                if (apa != null)
+                {
+                    result = Convert.ToString(apa.ConstructorArguments[0].Value);
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+
+        private static string ResolveAssemblyAuthor(AssemblyDefinition assemblyDefinition)
+        {
+            string result = null;
+            var aca = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(AssemblyCompanyAttribute).Name);
+            if (aca != null)
+            {
+                result = Convert.ToString(aca.ConstructorArguments[0].Value);
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+
+        private static string ResolveAssemblyDescription(AssemblyDefinition assemblyDefinition)
+        {
+            string result = null;
+            var ada = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(AssemblyDescriptionAttribute).Name);
+            if (ada != null)
+            {
+                result = Convert.ToString(ada.ConstructorArguments[0].Value);
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+
+        private void AddFiles(Manifest manifest, string basePath)
+        {
+            // If there's no base path then ignore the files node
+            if (basePath == null)
+                return;
+
+            if (manifest.Files == null)
+            {
+                AddFiles(basePath, @"**\*.*", null);
+            }
+            else
+            {
+                foreach (ManifestFile file in manifest.Files)
+                {
+                    AddFiles(basePath, file.Source, file.Target, file.Exclude);
                 }
             }
         }
@@ -395,11 +696,11 @@ namespace NuGet
             }
 
             // One or more exclusions may be specified in the file. Split it and prepend the base path to the wildcard provided.
-            string[] exclusions = exclude.Split(new[] {';'}, StringSplitOptions.RemoveEmptyEntries);
+            string[] exclusions = exclude.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string item in exclusions)
             {
                 string wildCard = PathResolver.NormalizeWildcard(basePath, item);
-                PathResolver.FilterPackageFiles(searchFiles, p => p.OriginalPath, new[] {wildCard});
+                PathResolver.FilterPackageFiles(searchFiles, p => p.OriginalPath, new[] { wildCard });
             }
         }
 
@@ -426,10 +727,10 @@ namespace NuGet
         private static IEnumerable<string> ParseTags(string tags)
         {
             Debug.Assert(tags != null);
-            return from tag in tags.Split(new[] {' '}, StringSplitOptions.RemoveEmptyEntries)
+            return from tag in tags.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
                    select tag.Trim();
         }
-        
+
         public IPackage Build()
         {
             return new SimplePackage(this);

@@ -37,6 +37,7 @@ namespace NuGet
             DependencySets = new SafeEnumerable<PackageDependencySet>(packageBuilder.DependencySets);
             PackageAssemblyReferences = new SafeEnumerable<PackageReferenceSet>(packageBuilder.PackageAssemblyReferences);
             Copyright = packageBuilder.Copyright;
+            TemplateValues = packageBuilder.TemplateValues;
             _packageBuilder = packageBuilder;
         }
 
@@ -102,6 +103,8 @@ namespace NuGet
         public IEnumerable<PackageDependencySet> DependencySets { get; private set; }
 
         public IEnumerable<PackageReferenceSet> PackageAssemblyReferences { get; private set; }
+
+        public IDictionary<string, string> TemplateValues { get; private set; }
 
         public bool IsPrerelease
         {

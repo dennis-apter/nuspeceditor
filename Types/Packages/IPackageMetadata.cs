@@ -34,5 +34,7 @@ namespace NuGet
         IEnumerable<PackageReferenceSet> PackageAssemblyReferences { get; }
 
         Version MinClientVersion { get; }
+
+        IDictionary<string,string> TemplateValues { get; }
     }
 }

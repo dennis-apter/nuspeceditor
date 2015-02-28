@@ -135,6 +135,11 @@ namespace PackageExplorerViewModel
             get { return Enumerable.Empty<PackageReferenceSet>(); }
         }
 
+        public IDictionary<string, string> TemplateValues
+        {
+            get { return null; }
+        }
+
         public bool IsAbsoluteLatestVersion
         {
             get { return false; }

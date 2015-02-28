@@ -27,6 +27,7 @@ namespace PackageExplorerViewModel
         private SemanticVersion _version;
         private ICollection<PackageDependencySet> _dependencySets;
         private ICollection<PackageReferenceSet> _packageAssemblyReferences;
+        private IDictionary<string, string> _templateValues;
         private Version _minClientVersion;
 
         public EditablePackageMetadata()
@@ -360,6 +361,11 @@ namespace PackageExplorerViewModel
             }
         }
 
+        IDictionary<string, string> IPackageMetadata.TemplateValues
+        {
+            get { return _templateValues; }
+        }
+
         IEnumerable<string> IPackageMetadata.Authors
         {
             get { return SplitString(Authors); }
@@ -413,6 +419,7 @@ namespace PackageExplorerViewModel
                 PackageAssemblyReferences.AddRange(source.PackageAssemblyReferences);
             }
             MinClientVersion = source.MinClientVersion;
+            _templateValues = source.TemplateValues;
         }
 
         private static Uri FixIconUrl(Uri uri)

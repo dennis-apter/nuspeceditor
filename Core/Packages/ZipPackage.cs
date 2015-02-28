@@ -179,6 +179,11 @@ namespace NuGet
             }
         }
 
+        IDictionary<string, string> IPackageMetadata.TemplateValues
+        {
+            get { return null; }
+        }
+
         public IEnumerable<FrameworkAssemblyReference> FrameworkAssemblies { get; set; }
 
         public IEnumerable<IPackageFile> GetFiles()

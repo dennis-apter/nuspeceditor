@@ -16,6 +16,12 @@ namespace NuGet
             {
                 throw new ArgumentNullException("packageId");
             }
+
+            if (packageId == Placeholders.Id)
+            {
+                return true;
+            }
+
             return (packageId.Length <= MaxPackageIdLength) && _idRegex.IsMatch(packageId);
         }
 

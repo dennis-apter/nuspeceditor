@@ -140,6 +140,11 @@ namespace NuGet
             }
         }
 
+        IDictionary<string, string> IPackageMetadata.TemplateValues
+        {
+            get { throw new NotSupportedException(); }
+        }
+
         public Version MinClientVersion
         {
             get;

@@ -194,6 +194,9 @@ namespace NuGet
         [XmlIgnore]
         public List<ManifestReferenceSet> ReferenceSets { get; set; }
 
+        [XmlIgnore]
+        public IDictionary<string,string> TemplateValues { get; private set; }
+
         SemanticVersion IPackageMetadata.Version
         {
             get
