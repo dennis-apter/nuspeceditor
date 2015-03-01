@@ -1219,23 +1219,36 @@ namespace PackageExplorerViewModel
             }
 
             string rootPath = Path.GetDirectoryName(fullpath);
+            Manifest manifest = Manifest.Create(PackageMetadata);
+            if (includeFilesSection)
+            {
+                string tempPath = Path.GetTempPath();
+
+                manifest.Files = new List<ManifestFile>();
+                manifest.Files.AddRange(RootFolder.GetFiles().Select(
+                    f =>
+                    {
+                        var source = String.IsNullOrEmpty(f.OriginalPath) || f.OriginalPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase)
+                            ? f.Path : PathUtility.RelativePathTo(rootPath, f.OriginalPath);
+
+                        var target = f.Path;
+                        if (Path.GetFileName(target) == Path.GetFileName(source))
+                        {
+                            target = Path.GetDirectoryName(target) + Path.DirectorySeparatorChar;
+                        }
+
+
+                        return new ManifestFile
+                        {
+                            Source = source,
+                            Target = target
+                        };
+                    })
+                );
+            }
 
             using (Stream fileStream = File.Create(fullpath))
             {
-                Manifest manifest = Manifest.Create(PackageMetadata);
-                if (includeFilesSection)
-                {
-                    string tempPath = Path.GetTempPath();
-
-                    manifest.Files = new List<ManifestFile>();
-                    manifest.Files.AddRange(RootFolder.GetFiles().Select(
-                        f => new ManifestFile
-                        {
-                            Source = String.IsNullOrEmpty(f.OriginalPath) || f.OriginalPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase) ? f.Path : PathUtility.RelativePathTo(rootPath, f.OriginalPath),
-                            Target = f.Path
-                        })
-                    );
-                }
                 manifest.Save(fileStream);
             }
         }

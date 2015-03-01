@@ -61,7 +61,8 @@ namespace NuGet
                     Placeholders.Title.Equals(Metadata.Title, StringComparison.InvariantCultureIgnoreCase) ||
                     Placeholders.Author.Equals(Metadata.Authors, StringComparison.InvariantCultureIgnoreCase) ||
                     Placeholders.Author.Equals(Metadata.Owners, StringComparison.InvariantCultureIgnoreCase) ||
-                    Placeholders.Description.Equals(Metadata.Description, StringComparison.InvariantCultureIgnoreCase);
+                    Placeholders.Description.Equals(Metadata.Description, StringComparison.InvariantCultureIgnoreCase) ||
+                    (Metadata.DependencySets != null && Metadata.DependencySets.SelectMany(ds => ds.Dependencies).Any(s => string.IsNullOrEmpty(s.Version)));
             }
         }
 
@@ -153,44 +154,44 @@ namespace NuGet
         public static Manifest Create(IPackageMetadata metadata)
         {
             var manifest = new Manifest
-                   {
-                       Metadata = new ManifestMetadata
-                                  {
-                                      Id = metadata.Id.SafeTrim(),
-                                      Version = metadata.Version.ToStringSafe(),
-                                      Title = metadata.Title.SafeTrim(),
-                                      Authors = GetCommaSeparatedString(metadata.Authors),
-                                      Owners = GetCommaSeparatedString(metadata.Owners) ??
-                                               GetCommaSeparatedString(metadata.Authors),
-                                      Tags = String.IsNullOrEmpty(metadata.Tags) ? null : metadata.Tags.SafeTrim(),
-                                      LicenseUrl = 
-                                          metadata.LicenseUrl != null
-                                              ? metadata.LicenseUrl.OriginalString.
-                                                    SafeTrim()
-                                              : null,
-                                      ProjectUrl =
-                                          metadata.ProjectUrl != null
-                                              ? metadata.ProjectUrl.OriginalString.
-                                                    SafeTrim()
-                                              : null,
-                                      IconUrl =
-                                          metadata.IconUrl != null
-                                              ? metadata.IconUrl.OriginalString.
-                                                    SafeTrim()
-                                              : null,
-                                      RequireLicenseAcceptance = metadata.RequireLicenseAcceptance,
-                                      DevelopmentDependency = metadata.DevelopmentDependency,
-                                      Description = metadata.Description.SafeTrim(),
-                                      Copyright = metadata.Copyright.SafeTrim(),
-                                      Summary = metadata.Summary.SafeTrim(),
-                                      ReleaseNotes = metadata.ReleaseNotes.SafeTrim(),
-                                      Language = metadata.Language.SafeTrim(),
-                                      DependencySets = CreateDependencySet(metadata),
-                                      FrameworkAssemblies = CreateFrameworkAssemblies(metadata),
-                                      ReferenceSets = CreateReferenceSets(metadata),
-                                      MinClientVersionString = metadata.MinClientVersion.ToStringSafe()
-                                  }
-                   };
+            {
+                Metadata = new ManifestMetadata
+                {
+                    Id = metadata.Id.SafeTrim(),
+                    Version = metadata.Version.ToStringSafe(),
+                    Title = metadata.Title.SafeTrim(),
+                    Authors = GetCommaSeparatedString(metadata.Authors),
+                    Owners = GetCommaSeparatedString(metadata.Owners) ??
+                            GetCommaSeparatedString(metadata.Authors),
+                    Tags = String.IsNullOrEmpty(metadata.Tags) ? null : metadata.Tags.SafeTrim(),
+                    LicenseUrl = 
+                        metadata.LicenseUrl != null
+                            ? metadata.LicenseUrl.OriginalString.
+                                SafeTrim()
+                            : null,
+                    ProjectUrl =
+                        metadata.ProjectUrl != null
+                            ? metadata.ProjectUrl.OriginalString.
+                                SafeTrim()
+                            : null,
+                    IconUrl =
+                        metadata.IconUrl != null
+                            ? metadata.IconUrl.OriginalString.
+                                SafeTrim()
+                            : null,
+                    RequireLicenseAcceptance = metadata.RequireLicenseAcceptance,
+                    DevelopmentDependency = metadata.DevelopmentDependency,
+                    Description = metadata.Description.SafeTrim(),
+                    Copyright = metadata.Copyright.SafeTrim(),
+                    Summary = metadata.Summary.SafeTrim(),
+                    ReleaseNotes = metadata.ReleaseNotes.SafeTrim(),
+                    Language = metadata.Language.SafeTrim(),
+                    DependencySets = CreateDependencySet(metadata),
+                    FrameworkAssemblies = CreateFrameworkAssemblies(metadata),
+                    ReferenceSets = CreateReferenceSets(metadata),
+                    MinClientVersionString = metadata.MinClientVersion.ToStringSafe()
+                }
+            };
 
             if (metadata.TemplateValues != null)
             {
@@ -231,6 +232,23 @@ namespace NuGet
                     manifest.Metadata.Description == templatedValue)
                 {
                     manifest.Metadata.Description = Placeholders.Description;
+                }
+
+                if (manifest.Metadata.DependencySets != null)
+                {
+                    foreach (var dependencySet in manifest.Metadata.DependencySets)
+                    {
+                        foreach (var dependency in dependencySet.Dependencies)
+                        {
+                            var key = PackageBuilder.CreateTemplateDependencyKey(
+                                dependencySet.TargetFramework, dependency.Id);
+                            if (metadata.TemplateValues.TryGetValue(key, out templatedValue) &&
+                                dependency.Version == templatedValue)
+                            {
+                                dependency.Version = null;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -468,7 +486,7 @@ namespace NuGet
 
         private static ValidationContext CreateValidationContext(object value)
         {
-            return new ValidationContext(value, NullServiceProvider.Instance, new Dictionary<object, object>());
+                        return new ValidationContext(value, NullServiceProvider.Instance, new Dictionary<object, object>());
         }
 
         #region Nested type: NullServiceProvider

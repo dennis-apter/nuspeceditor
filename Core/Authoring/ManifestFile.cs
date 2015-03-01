@@ -17,13 +17,13 @@ namespace NuGet
 
         private static readonly char[] _invalidSourceCharacters = Path.GetInvalidPathChars();
 
+        [XmlAttribute("target")]
+        public string Target { get; set; }
+
         [Required(ErrorMessageResourceType = typeof(NuGetResources),
             ErrorMessageResourceName = "Manifest_RequiredMetadataMissing")]
         [XmlAttribute("src")]
         public string Source { get; set; }
-
-        [XmlAttribute("target")]
-        public string Target { get; set; }
 
         [XmlAttribute("exclude")]
         public string Exclude { get; set; }

@@ -289,7 +289,9 @@ namespace NuGet
                 AddFiles(manifest, basePath);
                 filesAdded = true;
 
-                FillMetadataTemplate(manifest.Metadata);
+                var values = FillTemplateValues(manifest.Metadata);
+                FillTemplateDependencyVersions(manifest.Metadata, values);
+                TemplateValues = new ReadOnlyDictionary<string,string>(values);
             }
 
             IPackageMetadata metadata = manifest.Metadata;
@@ -329,11 +331,79 @@ namespace NuGet
             }
         }
 
-        private void FillMetadataTemplate(ManifestMetadata metadata)
+        private void FillTemplateDependencyVersions(ManifestMetadata metadata, Dictionary<string, string> values)
         {
+            foreach (var dependencySet in metadata.DependencySets)
+            {
+                foreach (var dependency in dependencySet.Dependencies)
+                {
+                    if (!string.IsNullOrEmpty(dependency.Version))
+                        continue;
+
+                    var basePath = ResolveCodeBaseDirectory(metadata, dependencySet.TargetFramework);
+                    if (null == basePath)
+                        continue;
+
+                    string dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
+                    if (!File.Exists(dependencyFileName))
+                        throw new FileNotFoundException(string.Format(
+                            CultureInfo.CurrentCulture,
+                            NuGetResources.PackageAuthoring_FileNotFound,
+                            dependencyFileName));
+                    
+                    var assemblyDefinition = AssemblyDefinition.ReadAssembly(dependencyFileName);
+                    dependency.Version = ResolveAssemblyVersion(assemblyDefinition);
+                    if (dependency.Version == null)
+                        throw new ArgumentException(string.Format(
+                            "Can't resolve a version of dependency {0}.", dependency.Id));
+
+                    var key = CreateTemplateDependencyKey(dependencySet.TargetFramework, dependency.Id);
+                    values.Add(key, dependency.Version);
+                }
+            }
+        }
+
+        internal static string CreateTemplateDependencyKey(string targetFramework, string id)
+        {
+            var fn = VersionUtility.ParseFrameworkName(targetFramework);
+            var sn = VersionUtility.GetShortFrameworkName(fn);
+            return "dependency:" + sn + ":" + id;
+        }
+
+        private string ResolveCodeBaseDirectory(ManifestMetadata metadata, string targetFramework)
+        {
+            IPackageFile primaryAssemblyFile;
+            if (targetFramework != null)
+            {
+                var path = string.Format(@"lib\{0}\{1}.dll", targetFramework, metadata.Id);
+                primaryAssemblyFile = Files.FirstOrDefault(f =>
+                    f.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase));
+            }
+            else
+            {
+                var path = "\\" + metadata.Id + ".dll";
+                primaryAssemblyFile = Files.FirstOrDefault(f =>
+                    f.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) && 
+                    f.Path.EndsWith(path, StringComparison.InvariantCultureIgnoreCase));
+            }
+
+            return primaryAssemblyFile != null 
+                ? Path.GetDirectoryName(primaryAssemblyFile.OriginalPath)
+                : null;
+        }
+
+        private Dictionary<string, string> FillTemplateValues(ManifestMetadata metadata)
+        {
+            string primaryAssemblyPath = null;
             var values = new Dictionary<string, string>();
             if (Placeholders.Id.Equals(metadata.Id, StringComparison.InvariantCultureIgnoreCase))
+            {
                 values.Add(Placeholders.Id, null);
+            }
+            else
+            {
+                primaryAssemblyPath = "\\" + metadata.Id + ".dll";
+            }
 
             if (Placeholders.Version.Equals(metadata.Version, StringComparison.InvariantCultureIgnoreCase))
                 values.Add(Placeholders.Version, null);
@@ -351,8 +421,13 @@ namespace NuGet
             bool resolved = false;
             foreach (var file in Files)
             {
-                if (!file.Path.StartsWith("lib") ||
-                    !".dll".Equals(Path.GetExtension(file.Path), StringComparison.InvariantCultureIgnoreCase))
+                if (!file.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) ||
+                    !file.Path.EndsWith(".dll", StringComparison.InvariantCultureIgnoreCase) ||
+                    file.Path.EndsWith(".resources.dll", StringComparison.InvariantCultureIgnoreCase))
+                    continue;
+
+                if (primaryAssemblyPath != null &&
+                    !file.Path.EndsWith(primaryAssemblyPath, StringComparison.InvariantCultureIgnoreCase))
                     continue;
 
                 var assemblyDefinition = AssemblyDefinition.ReadAssembly(file.OriginalPath);
@@ -368,9 +443,7 @@ namespace NuGet
             
             var unresolvedPlaceholders = values.Where(p => p.Value == null).Select(p => p.Key).ToList();
             if (!resolved || unresolvedPlaceholders.Count > 0)
-            {
                 throw new ArgumentException(string.Format("Can't resolve template values ({0})", string.Join(", ", unresolvedPlaceholders)));
-            }
 
             foreach (var placeholder in values)
             {
@@ -422,7 +495,7 @@ namespace NuGet
                 metadata.Tags = null;
             }
 
-            TemplateValues = new ReadOnlyDictionary<string,string>(values);
+            return values;
         }
 
         private static void TryResolveAssemblyId(Dictionary<string, string> values, IPackageFile file)
