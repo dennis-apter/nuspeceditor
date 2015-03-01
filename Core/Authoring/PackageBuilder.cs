@@ -27,14 +27,16 @@ namespace NuGet
         {
             using (Stream stream = File.OpenRead(path))
             {
-                ReadManifest(stream, basePath);
+                // Deserialize the document and extract the metadata
+                var manifest = Manifest.ReadFrom(stream);
+                ReadManifest(manifest, basePath);
             }
         }
 
-        public PackageBuilder(Stream stream, string basePath)
+        public PackageBuilder(Manifest manifest, string basePath)
             : this()
         {
-            ReadManifest(stream, basePath);
+            ReadManifest(manifest, basePath);
         }
 
         public PackageBuilder()
@@ -278,11 +280,8 @@ namespace NuGet
             return false;
         }
 
-        private void ReadManifest(Stream stream, string basePath)
+        private void ReadManifest(Manifest manifest, string basePath)
         {
-            // Deserialize the document and extract the metadata
-            Manifest manifest = Manifest.ReadFrom(stream);
-
             bool filesAdded = false;
             if (manifest.IsTemplate)
             {
@@ -375,7 +374,9 @@ namespace NuGet
             IPackageFile primaryAssemblyFile;
             if (targetFramework != null)
             {
-                var path = string.Format(@"lib\{0}\{1}.dll", targetFramework, metadata.Id);
+                var fn = VersionUtility.ParseFrameworkName(targetFramework);
+                var sn = VersionUtility.GetShortFrameworkName(fn);
+                var path = string.Format(@"lib\{0}\{1}.dll", sn, metadata.Id);
                 primaryAssemblyFile = Files.FirstOrDefault(f =>
                     f.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase));
             }

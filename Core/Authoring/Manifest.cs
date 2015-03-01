@@ -265,7 +265,9 @@ namespace NuGet
             return (from dependencySet in metadata.DependencySets
                     select new ManifestDependencySet
                     {
-                        TargetFramework = dependencySet.TargetFramework != null ? VersionUtility.GetFrameworkString(dependencySet.TargetFramework) : null,
+                        TargetFramework = dependencySet.TargetFramework != null 
+                            ? VersionUtility.GetShortFrameworkName(dependencySet.TargetFramework)
+                            : null,
                         Dependencies = CreateDependencies(dependencySet.Dependencies)
                     }).ToList();
         }

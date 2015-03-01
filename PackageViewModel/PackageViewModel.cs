@@ -1222,35 +1222,39 @@ namespace PackageExplorerViewModel
             Manifest manifest = Manifest.Create(PackageMetadata);
             if (includeFilesSection)
             {
-                string tempPath = Path.GetTempPath();
-
-                manifest.Files = new List<ManifestFile>();
-                manifest.Files.AddRange(RootFolder.GetFiles().Select(
-                    f =>
-                    {
-                        var source = String.IsNullOrEmpty(f.OriginalPath) || f.OriginalPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase)
-                            ? f.Path : PathUtility.RelativePathTo(rootPath, f.OriginalPath);
-
-                        var target = f.Path;
-                        if (Path.GetFileName(target) == Path.GetFileName(source))
-                        {
-                            target = Path.GetDirectoryName(target) + Path.DirectorySeparatorChar;
-                        }
-
-
-                        return new ManifestFile
-                        {
-                            Source = source,
-                            Target = target
-                        };
-                    })
-                );
+                ExportFiles(manifest, rootPath);
             }
 
             using (Stream fileStream = File.Create(fullpath))
             {
                 manifest.Save(fileStream);
             }
+        }
+
+        private void ExportFiles(Manifest manifest, string rootPath)
+        {
+            string tempPath = Path.GetTempPath();
+
+            manifest.Files = new List<ManifestFile>();
+            manifest.Files.AddRange(RootFolder.GetFiles().Select(
+                f =>
+                {
+                    var source = String.IsNullOrEmpty(f.OriginalPath) || f.OriginalPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase)
+                        ? f.Path : PathUtility.RelativePathTo(rootPath, f.OriginalPath);
+
+                    var target = f.Path;
+                    if (Path.GetFileName(target) == Path.GetFileName(source))
+                    {
+                        target = Path.GetDirectoryName(target) + Path.DirectorySeparatorChar;
+                    }
+
+                    return new ManifestFile
+                    {
+                        Source = source,
+                        Target = target
+                    };
+                })
+                );
         }
 
         internal void NotifyContentRenamed(PackagePart packagePart)
@@ -1378,27 +1382,38 @@ namespace PackageExplorerViewModel
                 return true;
             }
 
-            using (Stream metadataFileStream = File.OpenRead(editedFilePath))
+            try
             {
-                try
+                IPackageMetadata package;
+                using (Stream metadataFileStream = File.OpenRead(editedFilePath))
                 {
-                    Manifest manifest = Manifest.ReadFrom(metadataFileStream);
-                    var newMetadata = new EditablePackageMetadata(manifest.Metadata);
-                    PackageMetadata = newMetadata;
+                    var manifest = Manifest.ReadFrom(metadataFileStream);
+                    package = manifest.Metadata;
 
-                    return true;
+                    if (!string.IsNullOrEmpty(NuspecPath))
+                    {
+                        var rootPath = Path.GetDirectoryName(NuspecPath);
+                        ExportFiles(manifest, rootPath);
+                        var builder = new PackageBuilder(manifest, rootPath);
+                        package = builder.Build();
+                    }
                 }
-                catch (Exception exception)
-                {
-                    bool confirmExit = UIServices.ConfirmCloseEditor(
-                        "There is an error in the metadata source.", 
-                        exception.GetBaseException().Message + 
-                        Environment.NewLine +
-                        Environment.NewLine +
-                        "Do you want to cancel your changes and return?");
 
-                    return confirmExit;
-                }
+                var newMetadata = new EditablePackageMetadata(package);
+                PackageMetadata = newMetadata;
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                bool confirmExit = UIServices.ConfirmCloseEditor(
+                    "There is an error in the metadata source.", 
+                    exception.GetBaseException().Message + 
+                    Environment.NewLine +
+                    Environment.NewLine +
+                    "Do you want to cancel your changes and return?");
+
+                return confirmExit;
             }
         }
     }
