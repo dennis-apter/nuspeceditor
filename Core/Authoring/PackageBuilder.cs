@@ -364,9 +364,12 @@ namespace NuGet
 
         internal static string CreateTemplateDependencyKey(string targetFramework, string id)
         {
-            var fn = VersionUtility.ParseFrameworkName(targetFramework);
-            var sn = VersionUtility.GetShortFrameworkName(fn);
-            return "dependency:" + sn + ":" + id;
+            if (targetFramework != null)
+            {
+                targetFramework = VersionUtility.GetShortFrameworkName(targetFramework);
+            }
+
+            return "dependency:" + targetFramework + ":" + id;
         }
 
         private string ResolveCodeBaseDirectory(ManifestMetadata metadata, string targetFramework)
@@ -374,8 +377,7 @@ namespace NuGet
             IPackageFile primaryAssemblyFile;
             if (targetFramework != null)
             {
-                var fn = VersionUtility.ParseFrameworkName(targetFramework);
-                var sn = VersionUtility.GetShortFrameworkName(fn);
+                var sn = VersionUtility.GetShortFrameworkName(targetFramework);
                 var path = string.Format(@"lib\{0}\{1}.dll", sn, metadata.Id);
                 primaryAssemblyFile = Files.FirstOrDefault(f =>
                     f.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase));

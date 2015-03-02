@@ -509,5 +509,10 @@ namespace NuGet
 
             return name + "-" + profile;
         }
+
+        public static string GetShortFrameworkName(string targetFramework)
+        {
+            return GetShortFrameworkName(ParseFrameworkName(targetFramework));
+        }
     }
 }
