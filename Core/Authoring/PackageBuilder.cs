@@ -345,11 +345,24 @@ namespace NuGet
 
                     string dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
                     if (!File.Exists(dependencyFileName))
-                        throw new FileNotFoundException(string.Format(
-                            CultureInfo.CurrentCulture,
-                            NuGetResources.PackageAuthoring_FileNotFound,
-                            dependencyFileName));
-                    
+                    {
+                        do
+                        {
+                            basePath = Path.GetDirectoryName(basePath);
+                            if (basePath == null)
+                                break;
+
+                            dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
+                        }
+                        while (!File.Exists(dependencyFileName));
+
+                        if (basePath == null)
+                            throw new FileNotFoundException(string.Format(
+                                CultureInfo.CurrentCulture,
+                                NuGetResources.PackageAuthoring_FileNotFound,
+                                dependencyFileName));
+                    }
+
                     var assemblyDefinition = AssemblyDefinition.ReadAssembly(dependencyFileName);
                     dependency.Version = ResolveAssemblyVersion(assemblyDefinition);
                     if (dependency.Version == null)
