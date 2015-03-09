@@ -7,5 +7,6 @@ namespace NuGet
         public const string Title = "$title$";
         public const string Author = "$author$";
         public const string Description = "$description$";
+        public const string Copyright = "$copyright$";
     }
 }

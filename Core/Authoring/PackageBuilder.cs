@@ -431,6 +431,9 @@ namespace NuGet
                 Placeholders.Author.Equals(metadata.Owners, StringComparison.InvariantCultureIgnoreCase))
                 values.Add(Placeholders.Author, null);
 
+            if (Placeholders.Copyright.Equals(metadata.Copyright, StringComparison.InvariantCultureIgnoreCase))
+                values.Add(Placeholders.Copyright, null);
+
             if (Placeholders.Description.Equals(metadata.Description, StringComparison.InvariantCultureIgnoreCase))
                 values.Add(Placeholders.Description, null);
 
@@ -452,6 +455,7 @@ namespace NuGet
                 TryResolveAssemblyVersion(values, assemblyDefinition, file);
                 TryResolveAssemblyTitle(values, assemblyDefinition, file);
                 TryResolveAssemblyAuthor(values, assemblyDefinition, file);
+                TryResolveAssemblyCopyright(values, assemblyDefinition, file);
                 TryResolveAssemblyDescription(values, assemblyDefinition, file);
 
                 resolved = true;
@@ -479,6 +483,9 @@ namespace NuGet
                             metadata.Authors = placeholder.Value;
                         if (Placeholders.Author.Equals(metadata.Owners, StringComparison.InvariantCultureIgnoreCase))
                             metadata.Owners = placeholder.Value;
+                        break;
+                    case Placeholders.Copyright:
+                        metadata.Copyright = placeholder.Value;
                         break;
                     case Placeholders.Description:
                         metadata.Description = placeholder.Value;
@@ -594,6 +601,26 @@ namespace NuGet
             }
         }
 
+        private static void TryResolveAssemblyCopyright(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        {
+            string description;
+            if (values.TryGetValue(Placeholders.Copyright, out description))
+            {
+                var resolvedDescription = ResolveAssemblyCopyright(assemblyDefinition);
+                if (description == null)
+                {
+                    values[Placeholders.Copyright] = resolvedDescription;
+                }
+                else if (resolvedDescription != description)
+                {
+                    throw new ArgumentException(
+                        string.Format(CultureInfo.CurrentCulture,
+                            "Assembly '{0}' has different copyright '{1}', but expected '{2}'.",
+                            file.Path, resolvedDescription, description));
+                }
+            }
+        }
+
         private static void TryResolveAssemblyDescription(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
         {
             string description;
@@ -631,14 +658,9 @@ namespace NuGet
                 {
                     result = Convert.ToString(ava.ConstructorArguments[0].Value);
                 }
-                else
+                else if (assemblyDefinition.Name.Version != null)
                 {
-                    var afva = assemblyDefinition.CustomAttributes.FirstOrDefault(
-                        a => a.AttributeType.Name == typeof(AssemblyFileVersionAttribute).Name);
-                    if (afva != null)
-                    {
-                        result = Convert.ToString(afva.ConstructorArguments[0].Value);
-                    }
+                    result = assemblyDefinition.Name.Version.ToString();
                 }
             }
 
@@ -675,6 +697,19 @@ namespace NuGet
             if (aca != null)
             {
                 result = Convert.ToString(aca.ConstructorArguments[0].Value);
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? null : result;
+        }
+
+        private static string ResolveAssemblyCopyright(AssemblyDefinition assemblyDefinition)
+        {
+            string result = null;
+            var ada = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(AssemblyCopyrightAttribute).Name);
+            if (ada != null)
+            {
+                result = Convert.ToString(ada.ConstructorArguments[0].Value);
             }
 
             return string.IsNullOrWhiteSpace(result) ? null : result;
