@@ -192,7 +192,30 @@ namespace PackageExplorerViewModel
         {
             try
             {
-                PackageHelper.SavePackage(ViewModel.PackageMetadata, ViewModel.GetFiles(), fileName, true);
+                if (ViewModel.RootFolder.ContainsFolder("src") && 
+                    !fileName.EndsWith(".symbols.nupkg", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    var files = ViewModel.RootFolder.GetFiles().ToList();
+                    var regularFiles = files.Where(f =>
+                        !f.Path.StartsWith("src\\", StringComparison.InvariantCultureIgnoreCase) &&
+                        !f.OriginalPath.EndsWith(".pdb", StringComparison.InvariantCultureIgnoreCase)
+                    );
+
+                    var symbolsFiles = files.Where(f =>
+                        f.Path.StartsWith("src\\", StringComparison.InvariantCultureIgnoreCase) || 
+                        f.Path.StartsWith("lib\\", StringComparison.InvariantCultureIgnoreCase)
+                    );
+
+                    var symbolsFilename = Path.ChangeExtension(fileName, ".symbols.nupkg");
+
+                    PackageHelper.SavePackage(ViewModel.PackageMetadata, regularFiles, fileName, true);
+                    PackageHelper.SavePackage(ViewModel.PackageMetadata, symbolsFiles, symbolsFilename, true);
+                }
+                else
+                {
+                    PackageHelper.SavePackage(ViewModel.PackageMetadata, ViewModel.GetFiles(), fileName, true);
+                }
+
                 ViewModel.OnSaved(fileName);
                 return true;
             }

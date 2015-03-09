@@ -17,6 +17,8 @@ namespace NuGet
         private const string DefaultContentType = "application/octet";
         internal const string ManifestRelationType = "manifest";
 
+        private readonly List<PackageFileBase> _sourceFiles;
+
         public PackageBuilder(string path)
             : this(path, Path.GetDirectoryName(path))
         {
@@ -48,11 +50,12 @@ namespace NuGet
             Authors = new HashSet<string>();
             Owners = new HashSet<string>();
             Tags = new HashSet<string>();
+            _sourceFiles = new List<PackageFileBase>();
         }
 
         public ISet<string> Authors { get; private set; }
-
         public ISet<string> Owners { get; private set; }
+
         public ISet<string> Tags { get; private set; }
 
         public Collection<PackageReferenceSet> PackageAssemblyReferences { get; private set; }
@@ -142,6 +145,11 @@ namespace NuGet
         IEnumerable<FrameworkAssemblyReference> IPackageMetadata.FrameworkAssemblies
         {
             get { return FrameworkReferences; }
+        }
+
+        public bool HasPendingSourceFilesAutoPopulating
+        {
+            get { return _sourceFiles.Count > 0; }
         }
 
         public void Save(Stream stream)
@@ -363,8 +371,8 @@ namespace NuGet
                                 dependencyFileName));
                     }
 
-                    var assemblyDefinition = AssemblyDefinition.ReadAssembly(dependencyFileName);
-                    dependency.Version = ResolveAssemblyVersion(assemblyDefinition);
+                    var assembly = AssemblyDefinition.ReadAssembly(dependencyFileName);
+                    dependency.Version = ResolveAssemblyVersion(assembly);
                     if (dependency.Version == null)
                         throw new ArgumentException(string.Format(
                             "Can't resolve a version of dependency {0}.", dependency.Id));
@@ -445,18 +453,22 @@ namespace NuGet
                     file.Path.EndsWith(".resources.dll", StringComparison.InvariantCultureIgnoreCase))
                     continue;
 
+                var assembly = AssemblyDefinition.ReadAssembly(
+                    file.OriginalPath, 
+                    new ReaderParameters { ReadSymbols = true });
+
+                _sourceFiles.AddRange(GetSourceFiles(assembly));
+
                 if (primaryAssemblyPath != null &&
                     !file.Path.EndsWith(primaryAssemblyPath, StringComparison.InvariantCultureIgnoreCase))
                     continue;
 
-                var assemblyDefinition = AssemblyDefinition.ReadAssembly(file.OriginalPath);
-
                 TryResolveAssemblyId(values, file);
-                TryResolveAssemblyVersion(values, assemblyDefinition, file);
-                TryResolveAssemblyTitle(values, assemblyDefinition, file);
-                TryResolveAssemblyAuthor(values, assemblyDefinition, file);
-                TryResolveAssemblyCopyright(values, assemblyDefinition, file);
-                TryResolveAssemblyDescription(values, assemblyDefinition, file);
+                TryResolveAssemblyVersion(values, assembly, file);
+                TryResolveAssemblyTitle(values, assembly, file);
+                TryResolveAssemblyAuthor(values, assembly, file);
+                TryResolveAssemblyCopyright(values, assembly, file);
+                TryResolveAssemblyDescription(values, assembly, file);
 
                 resolved = true;
             }
@@ -521,6 +533,126 @@ namespace NuGet
             return values;
         }
 
+        private IEnumerable<PhysicalPackageFile> GetSourceFiles(AssemblyDefinition assembly)
+        {
+            var debuggable = assembly.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.Name == typeof(DebuggableAttribute).Name);
+
+            if (debuggable != null)
+            {
+                bool isJitTrackingEnabled = false;
+                if (debuggable.ConstructorArguments.Count == 1)
+                {
+                    var modes = (DebuggableAttribute.DebuggingModes) debuggable.ConstructorArguments[0].Value;
+                    isJitTrackingEnabled = new DebuggableAttribute(modes).IsJITTrackingEnabled;
+                }
+                else if (debuggable.ConstructorArguments.Count == 2)
+                {
+                    isJitTrackingEnabled = (bool) debuggable.ConstructorArguments[0].Value;
+                }
+
+                // If there's no JIT tracking then ignore the source symbols
+                if (isJitTrackingEnabled)
+                {
+                    var files = new HashSet<string>();
+                    foreach (var type in assembly.MainModule.Types)
+                    {
+                        AddSourceSymbolFiles(files, type);
+
+                        foreach (var t in type.NestedTypes)
+                        {
+                            AddSourceSymbolFiles(files, t);
+                        }
+                    }
+
+                    string root = null;
+                    foreach (var file in files)
+                    {
+                        root = root != null
+                            ? CommonPrefixWith(root, file)
+                            : file;
+                    }
+
+                    if (!string.IsNullOrEmpty(root))
+                    {
+                        var list = new List<PhysicalPackageFile>();
+                        foreach (var file in files)
+                        {
+                            if (!File.Exists(file))
+                                continue;
+
+                            var targetPath = "src\\" + file.Substring(root.Length);
+                            list.Add(new PhysicalPackageFile(false, file, targetPath));
+                        }
+
+                        return list;
+                    }
+                }
+            }
+
+            return Enumerable.Empty<PhysicalPackageFile>();
+        }
+
+        private static string CommonPrefixWith(string left, string right)
+        {
+            if (!string.IsNullOrEmpty(left) && !string.IsNullOrEmpty(right))
+            {
+                int maxLength = Math.Min(left.Length, right.Length);
+                int length = 0;
+                while (length < maxLength && left[length] == right[length])
+                    ++length;
+
+                if (0 < length)
+                    return left.Substring(0, length);
+            }
+
+            return null;
+        }
+
+        private static void AddSourceSymbolFiles(HashSet<string> files, TypeDefinition type)
+        {
+            foreach (var m in type.Methods)
+            {
+                AddSourceSymbolFiles(files, m);
+            }
+
+            foreach (var p in type.Properties)
+            {
+                AddSourceSymbolFiles(files, p.GetMethod);
+                AddSourceSymbolFiles(files, p.SetMethod);
+
+                foreach (var m in p.OtherMethods)
+                {
+                    AddSourceSymbolFiles(files, m);
+                }
+            }
+
+            foreach (var e in type.Events)
+            {
+                AddSourceSymbolFiles(files, e.AddMethod);
+                AddSourceSymbolFiles(files, e.RemoveMethod);
+
+                foreach (var m in e.OtherMethods)
+                {
+                    AddSourceSymbolFiles(files, m);
+                }
+            }
+        }
+
+        private static void AddSourceSymbolFiles(HashSet<string> files, MethodDefinition method)
+        {
+            if (method == null || !method.HasBody)
+                return;
+
+            foreach (var i in method.Body.Instructions)
+            {
+                if (i.SequencePoint == null)
+                    continue;
+
+                files.Add(i.SequencePoint.Document.Url);
+            }
+        }
+
         private static void TryResolveAssemblyId(Dictionary<string, string> values, IPackageFile file)
         {
             string id;
@@ -541,12 +673,12 @@ namespace NuGet
             }
         }
 
-        private static void TryResolveAssemblyVersion(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        private static void TryResolveAssemblyVersion(Dictionary<string, string> values, AssemblyDefinition assembly, IPackageFile file)
         {
             string version;
             if (values.TryGetValue(Placeholders.Version, out version))
             {
-                var resolvedVersion = ResolveAssemblyVersion(assemblyDefinition);
+                var resolvedVersion = ResolveAssemblyVersion(assembly);
                 if (version == null)
                 {
                     values[Placeholders.Version] = resolvedVersion;
@@ -561,12 +693,12 @@ namespace NuGet
             }
         }
 
-        private static void TryResolveAssemblyTitle(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        private static void TryResolveAssemblyTitle(Dictionary<string, string> values, AssemblyDefinition assembly, IPackageFile file)
         {
             string title;
             if (values.TryGetValue(Placeholders.Title, out title))
             {
-                var resolvedTitle = ResolveAssemblyTitle(assemblyDefinition);
+                var resolvedTitle = ResolveAssemblyTitle(assembly);
                 if (title == null)
                 {
                     values[Placeholders.Title] = resolvedTitle;
@@ -581,12 +713,12 @@ namespace NuGet
             }
         }
 
-        private static void TryResolveAssemblyAuthor(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        private static void TryResolveAssemblyAuthor(Dictionary<string, string> values, AssemblyDefinition assembly, IPackageFile file)
         {
             string author;
             if (values.TryGetValue(Placeholders.Author, out author))
             {
-                var resolvedAuthor = ResolveAssemblyAuthor(assemblyDefinition);
+                var resolvedAuthor = ResolveAssemblyAuthor(assembly);
                 if (author == null)
                 {
                     values[Placeholders.Author] = resolvedAuthor;
@@ -601,12 +733,12 @@ namespace NuGet
             }
         }
 
-        private static void TryResolveAssemblyCopyright(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        private static void TryResolveAssemblyCopyright(Dictionary<string, string> values, AssemblyDefinition assembly, IPackageFile file)
         {
             string description;
             if (values.TryGetValue(Placeholders.Copyright, out description))
             {
-                var resolvedDescription = ResolveAssemblyCopyright(assemblyDefinition);
+                var resolvedDescription = ResolveAssemblyCopyright(assembly);
                 if (description == null)
                 {
                     values[Placeholders.Copyright] = resolvedDescription;
@@ -621,12 +753,12 @@ namespace NuGet
             }
         }
 
-        private static void TryResolveAssemblyDescription(Dictionary<string, string> values, AssemblyDefinition assemblyDefinition, IPackageFile file)
+        private static void TryResolveAssemblyDescription(Dictionary<string, string> values, AssemblyDefinition assembly, IPackageFile file)
         {
             string description;
             if (values.TryGetValue(Placeholders.Description, out description))
             {
-                var resolvedDescription = ResolveAssemblyDescription(assemblyDefinition);
+                var resolvedDescription = ResolveAssemblyDescription(assembly);
                 if (description == null)
                 {
                     values[Placeholders.Description] = resolvedDescription;
@@ -641,10 +773,10 @@ namespace NuGet
             }
         }
 
-        private static string ResolveAssemblyVersion(AssemblyDefinition assemblyDefinition)
+        private static string ResolveAssemblyVersion(AssemblyDefinition assembly)
         {
             string result = null;
-            var aiva = assemblyDefinition.CustomAttributes.FirstOrDefault(
+            var aiva = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyInformationalVersionAttribute).Name);
             if (aiva != null)
             {
@@ -652,25 +784,25 @@ namespace NuGet
             }
             else
             {
-                var ava = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                var ava = assembly.CustomAttributes.FirstOrDefault(
                     a => a.AttributeType.Name == typeof(AssemblyVersionAttribute).Name);
                 if (ava != null)
                 {
                     result = Convert.ToString(ava.ConstructorArguments[0].Value);
                 }
-                else if (assemblyDefinition.Name.Version != null)
+                else if (assembly.Name.Version != null)
                 {
-                    result = assemblyDefinition.Name.Version.ToString();
+                    result = assembly.Name.Version.ToString();
                 }
             }
 
             return string.IsNullOrWhiteSpace(result) ? null : result;
         }
 
-        private static string ResolveAssemblyTitle(AssemblyDefinition assemblyDefinition)
+        private static string ResolveAssemblyTitle(AssemblyDefinition assembly)
         {
             string result = null;
-            var ata = assemblyDefinition.CustomAttributes.FirstOrDefault(
+            var ata = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyTitleAttribute).Name);
             if (ata != null)
             {
@@ -678,7 +810,7 @@ namespace NuGet
             }
             else
             {
-                var apa = assemblyDefinition.CustomAttributes.FirstOrDefault(
+                var apa = assembly.CustomAttributes.FirstOrDefault(
                     a => a.AttributeType.Name == typeof(AssemblyProductAttribute).Name);
                 if (apa != null)
                 {
@@ -689,10 +821,10 @@ namespace NuGet
             return string.IsNullOrWhiteSpace(result) ? null : result;
         }
 
-        private static string ResolveAssemblyAuthor(AssemblyDefinition assemblyDefinition)
+        private static string ResolveAssemblyAuthor(AssemblyDefinition assembly)
         {
             string result = null;
-            var aca = assemblyDefinition.CustomAttributes.FirstOrDefault(
+            var aca = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyCompanyAttribute).Name);
             if (aca != null)
             {
@@ -702,10 +834,10 @@ namespace NuGet
             return string.IsNullOrWhiteSpace(result) ? null : result;
         }
 
-        private static string ResolveAssemblyCopyright(AssemblyDefinition assemblyDefinition)
+        private static string ResolveAssemblyCopyright(AssemblyDefinition assembly)
         {
             string result = null;
-            var ada = assemblyDefinition.CustomAttributes.FirstOrDefault(
+            var ada = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyCopyrightAttribute).Name);
             if (ada != null)
             {
@@ -715,10 +847,10 @@ namespace NuGet
             return string.IsNullOrWhiteSpace(result) ? null : result;
         }
 
-        private static string ResolveAssemblyDescription(AssemblyDefinition assemblyDefinition)
+        private static string ResolveAssemblyDescription(AssemblyDefinition assembly)
         {
             string result = null;
-            var ada = assemblyDefinition.CustomAttributes.FirstOrDefault(
+            var ada = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyDescriptionAttribute).Name);
             if (ada != null)
             {
@@ -857,7 +989,21 @@ namespace NuGet
 
         public IPackage Build()
         {
+            if (_sourceFiles.Count > 0)
+                throw new InvalidOperationException("Auto populated source files not commited");
+
             return new SimplePackage(this);
+        }
+
+        public void AcceptSourceFilesAutoPopulation()
+        {
+            Files.AddRange(_sourceFiles);
+            _sourceFiles.Clear();
+        }
+
+        public void RejectSourceFilesAutoPopulate()
+        {
+            _sourceFiles.Clear();
         }
     }
 }

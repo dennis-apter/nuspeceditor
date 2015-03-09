@@ -150,6 +150,18 @@ namespace PackageExplorer
                 else if (extension.Equals(Constants.ManifestExtension, StringComparison.OrdinalIgnoreCase))
                 {
                     var builder = new PackageBuilder(packagePath);
+                    if (builder.HasPendingSourceFilesAutoPopulating)
+                    {
+                        if (UIServices.Confirm("Add source files?", "Yes, if you want to create a Symbol Package."))
+                        {
+                            builder.AcceptSourceFilesAutoPopulation();
+                        }
+                        else
+                        {
+                            builder.RejectSourceFilesAutoPopulate();
+                        }
+                    }
+
                     package = builder.Build();
                 }
 
