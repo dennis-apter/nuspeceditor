@@ -61,6 +61,7 @@ namespace NuGet
                     Placeholders.Title.Equals(Metadata.Title, StringComparison.InvariantCultureIgnoreCase) ||
                     Placeholders.Author.Equals(Metadata.Authors, StringComparison.InvariantCultureIgnoreCase) ||
                     Placeholders.Author.Equals(Metadata.Owners, StringComparison.InvariantCultureIgnoreCase) ||
+                    Placeholders.Copyright.Equals(Metadata.Copyright, StringComparison.InvariantCultureIgnoreCase) ||
                     Placeholders.Description.Equals(Metadata.Description, StringComparison.InvariantCultureIgnoreCase) ||
                     (Metadata.DependencySets != null && Metadata.DependencySets.SelectMany(ds => ds.Dependencies).Any(s => string.IsNullOrEmpty(s.Version)));
             }
