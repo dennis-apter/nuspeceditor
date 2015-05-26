@@ -105,7 +105,7 @@ namespace NuGet
             set;
         }
 
-        public IDictionary<string,string> TemplateValues
+        public IDictionary<string, string> TemplateValues
         {
             get;
             private set;
@@ -290,7 +290,7 @@ namespace NuGet
 
                 var values = FillTemplateValues(manifest.Metadata);
                 FillTemplateDependencyVersions(manifest.Metadata, values);
-                TemplateValues = new ReadOnlyDictionary<string,string>(values);
+                TemplateValues = new ReadOnlyDictionary<string, string>(values);
             }
 
             IPackageMetadata metadata = manifest.Metadata;
@@ -341,26 +341,52 @@ namespace NuGet
 
                     var basePath = ResolveCodeBaseDirectory(metadata, dependencySet.TargetFramework);
                     if (null == basePath)
+                    {
                         continue;
+                    }
 
                     string dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
                     if (!File.Exists(dependencyFileName))
                     {
-                        do
+                        dependencyFileName = null;
+                        foreach (var candidateFile in Directory.EnumerateFiles(basePath, dependency.Id + "*.dll"))
                         {
-                            basePath = Path.GetDirectoryName(basePath);
-                            if (basePath == null)
+                            var candidateAssembly = AssemblyDefinition.ReadAssembly(candidateFile);
+                            var candidateTitle = ResolveAssemblyTitle(candidateAssembly);
+                            if (candidateTitle == dependency.Id)
+                            {
+                                dependencyFileName = candidateFile;
                                 break;
-
-                            dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
+                            }
                         }
-                        while (!File.Exists(dependencyFileName));
 
-                        if (basePath == null)
-                            throw new FileNotFoundException(string.Format(
-                                CultureInfo.CurrentCulture,
-                                NuGetResources.PackageAuthoring_FileNotFound,
-                                dependencyFileName));
+                        if (dependencyFileName == null)
+                        {
+                            do
+                            {
+                                basePath = Path.GetDirectoryName(basePath);
+                                if (basePath == null)
+                                {
+                                    break;
+                                }
+
+                                dependencyFileName = Path.Combine(basePath, dependency.Id + ".dll");
+                            }
+                            while (!File.Exists(dependencyFileName));
+
+                            if (basePath == null)
+                            {
+                                if (!string.IsNullOrEmpty(dependencySet.TargetFramework))
+                                {
+                                    dependencyFileName += " (" + dependencySet.TargetFramework + ")";
+                                }
+
+                                throw new FileNotFoundException(string.Format(
+                                    CultureInfo.CurrentCulture,
+                                    NuGetResources.PackageAuthoring_FileNotFound,
+                                    dependencyFileName));
+                            }
+                        }
                     }
 
                     var assemblyDefinition = AssemblyDefinition.ReadAssembly(dependencyFileName);
@@ -399,11 +425,11 @@ namespace NuGet
             {
                 var path = "\\" + metadata.Id + ".dll";
                 primaryAssemblyFile = Files.FirstOrDefault(f =>
-                    f.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) && 
+                    f.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) &&
                     f.Path.EndsWith(path, StringComparison.InvariantCultureIgnoreCase));
             }
 
-            return primaryAssemblyFile != null 
+            return primaryAssemblyFile != null
                 ? Path.GetDirectoryName(primaryAssemblyFile.OriginalPath)
                 : null;
         }
@@ -456,7 +482,7 @@ namespace NuGet
 
                 resolved = true;
             }
-            
+
             var unresolvedPlaceholders = values.Where(p => p.Value == null).Select(p => p.Key).ToList();
             if (!resolved || unresolvedPlaceholders.Count > 0)
                 throw new ArgumentException(string.Format("Can't resolve template values ({0})", string.Join(", ", unresolvedPlaceholders)));
@@ -466,7 +492,7 @@ namespace NuGet
                 switch (placeholder.Key)
                 {
                     case Placeholders.Id:
-                        metadata.Id = placeholder.Value; 
+                        metadata.Id = placeholder.Value;
                         break;
                     case Placeholders.Version:
                         metadata.Version = placeholder.Value;
