@@ -618,14 +618,21 @@ namespace NuGet
             if (debuggable != null)
             {
                 bool isJitTrackingEnabled = false;
-                if (debuggable.ConstructorArguments.Count == 1)
+                try
                 {
-                    var modes = (DebuggableAttribute.DebuggingModes) debuggable.ConstructorArguments[0].Value;
-                    isJitTrackingEnabled = new DebuggableAttribute(modes).IsJITTrackingEnabled;
+                    if (debuggable.ConstructorArguments.Count == 1)
+                    {
+                        var modes = (DebuggableAttribute.DebuggingModes) debuggable.ConstructorArguments[0].Value;
+                        isJitTrackingEnabled = new DebuggableAttribute(modes).IsJITTrackingEnabled;
+                    }
+                    else if (debuggable.ConstructorArguments.Count == 2)
+                    {
+                        isJitTrackingEnabled = (bool) debuggable.ConstructorArguments[0].Value;
+                    }
                 }
-                else if (debuggable.ConstructorArguments.Count == 2)
+                catch (NotSupportedException)
                 {
-                    isJitTrackingEnabled = (bool) debuggable.ConstructorArguments[0].Value;
+                    // skip
                 }
 
                 // If there's no JIT tracking then ignore the source symbols
