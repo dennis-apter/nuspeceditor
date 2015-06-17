@@ -422,6 +422,8 @@ namespace NuGet
         private string ResolveCodeBaseDirectory(ManifestMetadata metadata, string targetFramework)
         {
             IPackageFile primaryAssemblyFile;
+
+            // Search in libs
             if (targetFramework != null)
             {
                 var sn = VersionUtility.GetShortFrameworkName(targetFramework);
@@ -436,10 +438,49 @@ namespace NuGet
                     f.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) &&
                     f.Path.EndsWith(path, StringComparison.InvariantCultureIgnoreCase));
             }
+            
+            // Search in libs for build
+            if (primaryAssemblyFile == null)
+            {
+                if (targetFramework != null)
+                {
+                    var sn = VersionUtility.GetShortFrameworkName(targetFramework);
+                    var path = string.Format(@"build\{0}\lib\{1}.dll", sn, metadata.Id);
+                    primaryAssemblyFile = Files.FirstOrDefault(f =>
+                        f.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase));
+                }
+                else
+                {
+                    var path = "\\lib\\" + metadata.Id + ".dll";
+                    primaryAssemblyFile = Files.FirstOrDefault(f =>
+                        f.Path.StartsWith("build", StringComparison.InvariantCultureIgnoreCase) &&
+                        f.Path.EndsWith(path, StringComparison.InvariantCultureIgnoreCase));
+                }
+            }
+            
+            // Search in libs as content
+            if (primaryAssemblyFile == null)
+            {
+                if (targetFramework != null)
+                {
+                    var sn = VersionUtility.GetShortFrameworkName(targetFramework);
+                    var path = string.Format(@"content\{0}\lib\{1}.dll", sn, metadata.Id);
+                    primaryAssemblyFile = Files.FirstOrDefault(f =>
+                        f.Path.Equals(path, StringComparison.InvariantCultureIgnoreCase));
+                }
+                else
+                {
+                    var path = "\\lib\\" + metadata.Id + ".dll";
+                    primaryAssemblyFile = Files.FirstOrDefault(f =>
+                        f.Path.StartsWith("content", StringComparison.InvariantCultureIgnoreCase) &&
+                        f.Path.EndsWith(path, StringComparison.InvariantCultureIgnoreCase));
+                }
+            }
+            
+            if (primaryAssemblyFile != null)
+                return Path.GetDirectoryName(primaryAssemblyFile.OriginalPath);
 
-            return primaryAssemblyFile != null
-                ? Path.GetDirectoryName(primaryAssemblyFile.OriginalPath)
-                : null;
+            return null;
         }
 
         private Dictionary<string, string> FillTemplateValues(ManifestMetadata metadata)
@@ -474,10 +515,20 @@ namespace NuGet
             bool resolved = false;
             foreach (var file in Files)
             {
-                if (!file.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) ||
-                    !file.Path.EndsWith(".dll", StringComparison.InvariantCultureIgnoreCase) ||
+                if (!file.Path.EndsWith(".dll", StringComparison.InvariantCultureIgnoreCase) ||
                     file.Path.EndsWith(".resources.dll", StringComparison.InvariantCultureIgnoreCase))
                     continue;
+
+                if (!file.Path.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    if (!file.Path.StartsWith("build", StringComparison.InvariantCultureIgnoreCase) &&
+                        !file.Path.StartsWith("content", StringComparison.InvariantCultureIgnoreCase))
+                        continue;
+
+                    var dir = Path.GetDirectoryName(file.Path);
+                    if (!dir.EndsWith("lib", StringComparison.InvariantCultureIgnoreCase))
+                        continue;
+                }
 
                 var assembly = AssemblyDefinition.ReadAssembly(
                     file.OriginalPath, 
