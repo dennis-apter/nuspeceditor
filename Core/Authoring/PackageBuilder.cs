@@ -859,25 +859,51 @@ namespace NuGet
 
         private static string ResolveAssemblyVersion(AssemblyDefinition assembly)
         {
-            string result = null;
+            string result;
             var aiva = assembly.CustomAttributes.FirstOrDefault(
                 a => a.AttributeType.Name == typeof(AssemblyInformationalVersionAttribute).Name);
+
             if (aiva != null)
             {
                 result = Convert.ToString(aiva.ConstructorArguments[0].Value);
+
+                var semanticVersion = SemanticVersion.Parse(result);
+                var sv = semanticVersion.Version;
+                var av = assembly.Name.Version;
+                if (!string.IsNullOrEmpty(semanticVersion.SpecialVersion) &&
+                    sv.Major == av.Major && sv.Minor == av.Minor)
+                {
+                    // From MSDN:
+                    // When specifying a version, you have to at least specify major.
+                    // If you specify major and minor, you can specify an asterisk (*) for build.
+                    // This will cause build to be equal to the number of days since January 1, 2000 local time,
+                    // and for revision to be equal to the number of seconds since midnight local time
+                    // (without taking into account time zone adjustments for daylight saving time), divided by 2.
+
+                    if (av.Build != 0 && sv.Build == 0)
+                    {
+                        // This is Auto incremented build number?
+                        var sinceY2K = TimeSpan.FromDays(av.Build);
+                        if ((DateTime.Now - sinceY2K).Year == 2000)
+                        {
+                            result += "-" + av.Build;
+                        }
+                    }
+
+                    if (av.Revision != 0 && sv.Revision == 0)
+                    {
+                        // This is Auto incremented revision number?
+                        var sinceMidnight = TimeSpan.FromSeconds(av.Revision*2);
+                        if ((DateTime.Now - sinceMidnight).Hour <= 4)
+                        {
+                            result += "-" + (av.Revision / 60);
+                        }
+                    }
+                }
             }
             else
             {
-                var ava = assembly.CustomAttributes.FirstOrDefault(
-                    a => a.AttributeType.Name == typeof(AssemblyVersionAttribute).Name);
-                if (ava != null)
-                {
-                    result = Convert.ToString(ava.ConstructorArguments[0].Value);
-                }
-                else if (assembly.Name.Version != null)
-                {
-                    result = assembly.Name.Version.ToString();
-                }
+                result = assembly.Name.Version.ToString();
             }
 
             return string.IsNullOrWhiteSpace(result) ? null : result;
